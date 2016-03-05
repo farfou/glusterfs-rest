@@ -10,8 +10,53 @@ from flask import render_template
 from glusterfsrest.restapp import app, requires_auth, get_post_data
 from glusterfsrest.restapp import run_and_response
 from glusterfsrest.cli import volume, peer
+from glusterfsrest.fs.xfs import Xfs
 import yaml
 import os
+import lvm
+
+
+@app.route("/api/<float:version>/lvm/<string:vg_name>/thinpool/<string:pool_name>", methods=['POST'])
+def createLvThinVolume(version, vg_name, pool_name, size):
+    vg = lvm.vgOpen(vg_name, 'w')
+    vg.createLvThinpool(pool_name, size)
+    vg.close()
+    return
+
+@app.route("/api/<float:version>/lvm/<string:vg_name>/lv/<string:lv_name>", methods=['POST'])
+def createThinVolume(version, vg_name, lv_name):
+    vg = lvm.vgOpen(vg_name,'w')
+    thinpoolname = get_post_data('thinpool', '')
+    size = int(get_post_data('size', 1000000))
+    vg.createLvThin(thinpoolname, lv_name, size)
+    vg.close()
+    return
+
+
+@app.route("/api/<float:version>/lvm/<string:vg_name>/lv/<string:lv_name>/format", methods=['POST'])
+def formatThinVolumeAndMount(version, vg_name, lv_name):
+    devPath = '/dev/' + vg_name + '/' + lv_name;
+    mountPoint = get_post_data('mount_point', '/mnt/vol/' + lv_name)
+    fs_conf = dict()
+    fs_conf["dev_file"] = devPath
+    fs_conf["type"] = 'xfs'
+    fs_conf["mount_point"] = mountPoint
+    fs_conf["mount_option"] = ""
+    # -i size=512
+
+
+    ### Create mount point !
+    ###
+    ###
+
+
+    xfsVol = Xfs(vg_name + '/' + lv_name, fs_conf)
+    xfsVol.mkfs('xfs', devPath, '-i size=512')
+    os.makedirs(mountPoint)
+    xfsVol.mount()
+    #create subdir
+    xfsVol.create_dir('/content')
+    return
 
 
 @app.route("/api/<float:version>/doc")
